@@ -66,12 +66,88 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     return clean_df
 
 
-def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
+def calculate_stochastic_rsi(df: pd.DataFrame, k_period: int = 14, d_period: int = 3, rsi_period: int = 14) -> pd.DataFrame:
+    """
+    Calculate Stochastic RSI, a second-derivative oscillator of price.
+    
+    Args:
+        df (pd.DataFrame): DataFrame containing price data
+        k_period (int): Period for %K line
+        d_period (int): Period for %D line (signal)
+        rsi_period (int): Period for RSI calculation
+        
+    Returns:
+        pd.DataFrame: DataFrame with Stochastic RSI features
+    """
+    # Calculate RSI
+    delta = df['Close'].diff().dropna()
+    up, down = delta.copy(), delta.copy()
+    up[up < 0] = 0
+    down[down > 0] = 0
+    down = abs(down)
+    
+    avg_gain = up.rolling(window=rsi_period).mean()
+    avg_loss = down.rolling(window=rsi_period).mean()
+    
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    
+    # Calculate Stochastic RSI
+    stoch_rsi = (rsi - rsi.rolling(k_period).min()) / (rsi.rolling(k_period).max() - rsi.rolling(k_period).min())
+    k = stoch_rsi.rolling(k_period).mean() * 100  # %K
+    d = k.rolling(d_period).mean()  # %D (signal line)
+    
+    return pd.DataFrame({
+        'StochRSI_K': k,
+        'StochRSI_D': d,
+        'StochRSI_Raw': stoch_rsi * 100
+    })
+
+
+def calculate_volume_profile(df: pd.DataFrame, bins: int = 10) -> pd.DataFrame:
+    """
+    Calculate a simple volume profile by price zones
+    
+    Args:
+        df (pd.DataFrame): DataFrame with OHLCV data
+        bins (int): Number of price zones to divide the range into
+        
+    Returns:
+        pd.DataFrame: DataFrame with volume profile features
+    """
+    # Create price bins
+    price_range = df['Close'].max() - df['Close'].min()
+    bin_size = price_range / bins
+    
+    # Calculate which bin each price falls into
+    df['price_bin'] = ((df['Close'] - df['Close'].min()) / bin_size).astype(int)
+    df.loc[df['price_bin'] == bins, 'price_bin'] = bins - 1  # Handle edge case
+    
+    # Calculate volume per bin
+    volume_profile = df.groupby('price_bin')['Volume'].sum().reset_index()
+    
+    # Create features indicating how far price is from high volume zones
+    bin_centers = df['Close'].min() + (volume_profile['price_bin'] + 0.5) * bin_size
+    volume_profile['bin_center_price'] = bin_centers
+    
+    # Sort by volume to find highest volume areas
+    high_vol_zones = volume_profile.sort_values('Volume', ascending=False)['bin_center_price'].values
+    
+    # Calculate distance to nearest high volume zone
+    result = pd.DataFrame(index=df.index)
+    for i, zone in enumerate(high_vol_zones[:3]):  # Top 3 volume zones
+        result[f'Dist_HighVol_Zone_{i+1}'] = (df['Close'] - zone).abs()
+    
+    return result
+
+
+def engineer_features(df: pd.DataFrame, include_volume_profile: bool = True) -> pd.DataFrame:
     """
     Create new features for stock market prediction.
     
     Args:
         df (pd.DataFrame): Cleaned dataframe
+        include_volume_profile (bool): Whether to include volume profile analysis
         
     Returns:
         pd.DataFrame: Dataframe with additional engineered features
@@ -96,15 +172,28 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     feature_df['Volatility_5d'] = feature_df['Return'].rolling(window=5).std()
     feature_df['Volatility_20d'] = feature_df['Return'].rolling(window=20).std()
     
-    # Moving Averages
+    # Moving Averages - include 5, 20, and now 50 day
     feature_df['MA_5d'] = feature_df['Close'].rolling(window=5).mean()
     feature_df['MA_20d'] = feature_df['Close'].rolling(window=20).mean()
+    feature_df['MA_50d'] = feature_df['Close'].rolling(window=50).mean()
+    
+    # EMA - include 20 and 50 day as requested
+    feature_df['EMA_12d'] = feature_df['Close'].ewm(span=12, adjust=False).mean()
+    feature_df['EMA_20d'] = feature_df['Close'].ewm(span=20, adjust=False).mean()
+    feature_df['EMA_26d'] = feature_df['Close'].ewm(span=26, adjust=False).mean()
+    feature_df['EMA_50d'] = feature_df['Close'].ewm(span=50, adjust=False).mean()
+    
+    # Price distance from key EMAs
+    feature_df['Dist_EMA20'] = (feature_df['Close'] - feature_df['EMA_20d']) / feature_df['Close']
+    feature_df['Dist_EMA50'] = (feature_df['Close'] - feature_df['EMA_50d']) / feature_df['Close']
+    
+    # EMA crossovers (potential trade signals)
+    feature_df['EMA20_cross_EMA50'] = feature_df['EMA_20d'] - feature_df['EMA_50d']
     
     # MACD components
-    feature_df['EMA_12d'] = feature_df['Close'].ewm(span=12, adjust=False).mean()
-    feature_df['EMA_26d'] = feature_df['Close'].ewm(span=26, adjust=False).mean()
     feature_df['MACD'] = feature_df['EMA_12d'] - feature_df['EMA_26d']
     feature_df['MACD_Signal'] = feature_df['MACD'].ewm(span=9, adjust=False).mean()
+    feature_df['MACD_Histogram'] = feature_df['MACD'] - feature_df['MACD_Signal']
     
     # Relative Strength Index (RSI) - 14 days
     # Calculate daily price changes
@@ -119,6 +208,24 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     # Calculate relative strength (RS) and RSI
     rs = avg_gain / avg_loss
     feature_df['RSI_14d'] = 100 - (100 / (1 + rs))
+    
+    # Add Stochastic RSI
+    stoch_rsi_df = calculate_stochastic_rsi(feature_df)
+    feature_df = pd.concat([feature_df, stoch_rsi_df], axis=1)
+    
+    # Volume-based indicators
+    feature_df['Volume_Change'] = feature_df['Volume'].pct_change()
+    feature_df['Vol_MA_5d'] = feature_df['Volume'].rolling(window=5).mean()
+    feature_df['Vol_MA_20d'] = feature_df['Volume'].rolling(window=20).mean()
+    feature_df['Vol_Ratio'] = feature_df['Volume'] / feature_df['Vol_MA_20d']
+    
+    # Volume profile analysis
+    if include_volume_profile:
+        try:
+            vol_profile = calculate_volume_profile(feature_df)
+            feature_df = pd.concat([feature_df, vol_profile], axis=1)
+        except Exception as e:
+            print(f"Skipping volume profile analysis due to error: {e}")
     
     # Drop rows with NaN values created by rolling calculations
     feature_df = feature_df.dropna()
@@ -172,7 +279,8 @@ def process_data(
     input_file: str,
     output_file: Optional[str] = None,
     forecast_horizon: int = 1,
-    save_processed: bool = True
+    save_processed: bool = True,
+    include_volume_profile: bool = True
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
     """
     Complete data processing pipeline from raw data to train/test splits.
@@ -182,6 +290,7 @@ def process_data(
         output_file (Optional[str]): Path to save processed data (if None, derives from input_file)
         forecast_horizon (int): Number of periods ahead to forecast
         save_processed (bool): Whether to save the processed data
+        include_volume_profile (bool): Whether to include volume profile analysis
         
     Returns:
         Tuple: X_train, X_test, y_train, y_test
@@ -195,7 +304,7 @@ def process_data(
     # Load and process data
     raw_df = load_raw_data(input_file)
     clean_df = clean_data(raw_df)
-    feature_df = engineer_features(clean_df)
+    feature_df = engineer_features(clean_df, include_volume_profile=include_volume_profile)
     
     # Save processed data if requested
     if save_processed and output_file:
@@ -215,6 +324,7 @@ if __name__ == "__main__":
     parser.add_argument("--output", help="Path to save processed data")
     parser.add_argument("--horizon", type=int, default=1, help="Forecast horizon (days)")
     parser.add_argument("--no-save", action="store_true", help="Do not save processed data")
+    parser.add_argument("--no-volume-profile", action="store_true", help="Disable volume profile analysis")
     
     args = parser.parse_args()
     
@@ -222,7 +332,8 @@ if __name__ == "__main__":
         args.input,
         args.output,
         forecast_horizon=args.horizon,
-        save_processed=not args.no_save
+        save_processed=not args.no_save,
+        include_volume_profile=not args.no_volume_profile
     )
     
     print("Data processing complete!") 
