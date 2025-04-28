@@ -18,7 +18,7 @@ from typing import Dict, Any, Optional, Tuple, List
 # Add src to path for relative imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.preprocess import process_data
+from src.preprocess import process_data, load_raw_data, clean_data, engineer_features, prepare_train_test_data
 from src.models import get_model
 
 
@@ -326,7 +326,7 @@ if __name__ == "__main__":
     parser.add_argument("--input", required=True, help="Path to the raw data file")
     parser.add_argument("--model-type", default="rf", choices=["linear", "ridge", "lasso", "elasticnet", "rf", "gb", "svm"],
                         help="Type of model to train")
-    parser.add_argument("--output-dir", default="../models", help="Directory to save outputs")
+    parser.add_argument("--output-dir", default="report", help="Directory to save outputs")
     parser.add_argument("--horizon", type=int, default=1, help="Forecast horizon (days)")
     parser.add_argument("--no-visualize", action="store_true", help="Disable visualization")
     parser.add_argument("--no-save-model", action="store_true", help="Disable model saving")

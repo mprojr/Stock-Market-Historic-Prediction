@@ -229,7 +229,8 @@ def engineer_features(df: pd.DataFrame, include_volume_profile: bool = True) -> 
     
     # Drop rows with NaN values created by rolling calculations
     feature_df = feature_df.dropna()
-    
+    feature_df = feature_df.replace([np.inf, -np.inf], np.nan).dropna()
+
     print(f"Created dataframe with {len(feature_df.columns)} features")
     return feature_df
 
