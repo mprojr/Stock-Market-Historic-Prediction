@@ -28,7 +28,7 @@ def create_lstm_dataset(X, y, time_steps=1):
     return np.array(Xs), np.array(ys)
 
 
-def train_lstm_model(csv_file: str, time_steps: int = 1, epochs: int = 30, batch_size: int = 32):
+def train_lstm_model(csv_file: str, time_steps: int = 1, epochs: int = 30, batch_size: int = 32, lstm_units: int = 64):
     """
     Train an LSTM model using engineered features.
 
@@ -79,7 +79,7 @@ def train_lstm_model(csv_file: str, time_steps: int = 1, epochs: int = 30, batch
 
     # Build LSTM model
     model = Sequential([
-        LSTM(64, input_shape=(X_train.shape[1], X_train.shape[2]), return_sequences=False),
+        LSTM(lstm_units, input_shape=(X_train.shape[1], X_train.shape[2]), return_sequences=False),
         Dense(1)
     ])
     model.compile(optimizer='adam', loss='mse')
@@ -136,7 +136,7 @@ def train_lstm_model(csv_file: str, time_steps: int = 1, epochs: int = 30, batch
     plot_actual_vs_predicted(y_test_true, y_pred, date_index=date_index, save_path="report/actual_vs_predicted.png")
 
 
-    return model, history
+    return model, history, (mse, rmse, mae, r2, direction_accuracy)
 
 
 def plot_training_history(history, save_path="report/loss_plot.png"):
@@ -200,25 +200,76 @@ def plot_actual_vs_predicted(y_true, y_pred, date_index=None, save_path="report/
     # Show the plot
     plt.show()
 
+def run_lstm_ablation_study(csv_file: str, time_steps=10, epochs=50, batch_size=32, unit_list=[32, 64, 128]):
+    print("Running Ablation Study on LSTM Width (Units)")
+    results = []
+
+    for units in unit_list:
+        print(f"\n🔧 Training with LSTM Units = {units}...")
+        #_, _, metrics = train_lstm_model(
+        #    csv_file=csv_file,
+        #    time_steps=time_steps,
+        #    epochs=epochs,
+        #    batch_size=batch_size,
+        #    lstm_units=units
+        #)
+
+
+        # You must capture metrics from train_lstm_model, so let's assume you return them
+        # If not, we can extract them from a modified return
+        # Here, we assume train_lstm_model prints them and we collect manually
+        # Instead, let’s return them from the function
+
+        # Return like: return model, history, (mse, rmse, mae, r2, direction_accuracy)
+        _, _, metrics = train_lstm_model(
+            csv_file=csv_file,
+            time_steps=time_steps,
+            epochs=epochs,
+            batch_size=batch_size,
+            lstm_units=units
+        )
+
+        results.append({
+            'LSTM Units': units,
+            'MSE': metrics[0],
+            'RMSE': metrics[1],
+            'MAE': metrics[2],
+            'R2': metrics[3],
+            'Direction Accuracy': metrics[4]
+        })
+
+    # Print final table
+    print("\n📊 Ablation Results:")
+    print(f"{'Units':<10}{'MSE':<10}{'RMSE':<10}{'MAE':<10}{'R2':<10}{'DirAcc':<10}")
+    for r in results:
+        print(f"{r['LSTM Units']:<10}{r['MSE']:<10.4f}{r['RMSE']:<10.4f}{r['MAE']:<10.4f}{r['R2']:<10.4f}{r['Direction Accuracy']:<10.4f}")
 
 
 # Example usage (you can comment this out if importing)
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Train LSTM model for stock prediction")
+    parser = argparse.ArgumentParser(description="Train LSTM model for stock prediction or run ablation study")
     parser.add_argument('--csv', type=str, required=True, help='Path to the stock CSV file')
     parser.add_argument('--time_steps', type=int, default=10, help='Number of past steps to use')
     parser.add_argument('--epochs', type=int, default=50, help='Number of training epochs')
     parser.add_argument('--batch_size', type=int, default=32, help='Training batch size')
+    parser.add_argument('--ablation', action='store_true', help='Run ablation study instead of single training')
     args = parser.parse_args()
 
-    model, history = train_lstm_model(
-        csv_file=args.csv,
-        time_steps=args.time_steps,
-        epochs=args.epochs,
-        batch_size=args.batch_size
-    )
-
-    plot_training_history(history, save_path="report/loss_plot.png")   # 👈 Now it saves automatically
-    
+    if args.ablation:
+        run_lstm_ablation_study(
+            csv_file=args.csv,
+            time_steps=args.time_steps,
+            epochs=args.epochs,
+            batch_size=args.batch_size,
+            unit_list=[32, 64, 128]  # or any list you want to test
+        )
+    else:
+        model, history, _ = train_lstm_model(
+            csv_file=args.csv,
+            time_steps=args.time_steps,
+            epochs=args.epochs,
+            batch_size=args.batch_size
+        )
+        plot_training_history(history, save_path="report/loss_plot.png")

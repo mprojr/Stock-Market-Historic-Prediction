@@ -109,3 +109,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [Kaggle](https://www.kaggle.com/) for providing datasets
 - [scikit-learn](https://scikit-learn.org/) for machine learning tools
 - [pandas](https://pandas.pydata.org/) for data processing
+
+## Commands
+1) python src/train.py --input data/raw/AAWW.csv --model-type modelName --ablation : Running ablation for traditional models
+2) python src/models/lstm_model.py --csv data/raw/AAWW.csv --ablation : Running ablation for lstm model

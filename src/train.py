@@ -326,6 +326,69 @@ def train_evaluate_pipeline(
     )
     
     print("Training and evaluation complete!")
+    
+def run_traditional_model_ablation(
+    input_file: str,
+    model_type: str,
+    param_grid: List[Dict[str, Any]],
+    forecast_horizon: int = 1,
+    include_volume_profile: bool = True,
+    output_dir: str = "report/ablation",
+) -> None:
+    import pandas as pd
+    from src.preprocess import process_data
+    from src.train import train_model, evaluate_model
+    from datetime import datetime
+    import os
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Prepare the data once
+    raw_data_path = os.path.join(os.path.dirname(output_dir), 'processed', f"{os.path.basename(input_file).split('.')[0]}_processed.csv")
+    X_train, X_test, y_train, y_test = process_data(
+        input_file=input_file,
+        output_file=raw_data_path,
+        forecast_horizon=forecast_horizon,
+        include_volume_profile=include_volume_profile
+    )
+    raw_data = pd.read_csv(raw_data_path) if os.path.exists(raw_data_path) else None
+
+    results = []
+
+    for params in param_grid:
+        print(f"\n🔍 Testing {model_type} with params: {params}")
+        model, _ = train_model(
+            X_train=X_train,
+            y_train=y_train,
+            model_type=model_type,
+            model_params=params
+        )
+
+        metrics = evaluate_model(
+            model=model,
+            X_test=X_test,
+            y_test=y_test,
+            raw_data=raw_data,
+            save_results=False,
+            visualize=False
+        )
+
+        result_entry = {
+            "Model": model_type,
+            "Params": json.dumps(params),
+            "MSE": metrics.get("mse"),
+            "RMSE": metrics.get("rmse"),
+            "MAE": metrics.get("mae"),
+            "R2": metrics.get("r2"),
+            "Direction Accuracy": metrics.get("direction_accuracy")
+        }
+        results.append(result_entry)
+
+    df_results = pd.DataFrame(results)
+    output_csv = os.path.join(output_dir, f"ablation_{model_type}_{timestamp}.csv")
+    df_results.to_csv(output_csv, index=False)
+    print(f"\n✅ Ablation results saved to {output_csv}")
 
 
 if __name__ == "__main__":
@@ -339,16 +402,51 @@ if __name__ == "__main__":
     parser.add_argument("--no-save-model", action="store_true", help="Disable model saving")
     parser.add_argument("--no-save-results", action="store_true", help="Disable results saving")
     parser.add_argument("--no-volume-profile", action="store_true", help="Disable volume profile analysis")
-    
+    parser.add_argument("--ablation", action="store_true", help="Run ablation study for traditional models")
     args = parser.parse_args()
-    
-    train_evaluate_pipeline(
-        input_file=args.input,
-        model_type=args.model_type,
-        output_dir=args.output_dir,
-        forecast_horizon=args.horizon,
-        visualize=not args.no_visualize,
-        include_volume_profile=not args.no_volume_profile,
-        save_model=not args.no_save_model,
-        save_results=not args.no_save_results
-    ) 
+
+    if args.ablation:
+        if args.model_type in ["rf", "gb"]:
+            param_grid = [
+                {"n_estimators": 50},
+                {"n_estimators": 100},
+                {"n_estimators": 200}
+            ]
+        elif args.model_type in ["ridge", "lasso", "elasticnet"]:
+            param_grid = [
+                {"alpha": 0.01},
+                {"alpha": 0.1},
+                {"alpha": 1.0}
+            ]
+        elif args.model_type == "linear":
+            param_grid = [
+                {},  # no hyperparameters for LinearRegression
+            ]
+        elif args.model_type == "svm":
+            param_grid = [
+                {"C": 0.1},
+                {"C": 1.0},
+                {"C": 10.0}
+            ]
+        else:
+            raise ValueError("Ablation grid not defined for this model type.")
+
+        run_traditional_model_ablation(
+            input_file=args.input,
+            model_type=args.model_type,
+            param_grid=param_grid,
+            forecast_horizon=args.horizon,
+            include_volume_profile=not args.no_volume_profile,
+            output_dir=args.output_dir
+        )
+    else:
+        train_evaluate_pipeline(
+            input_file=args.input,
+            model_type=args.model_type,
+            output_dir=args.output_dir,
+            forecast_horizon=args.horizon,
+            visualize=not args.no_visualize,
+            include_volume_profile=not args.no_volume_profile,
+            save_model=not args.no_save_model,
+            save_results=not args.no_save_results
+        )
