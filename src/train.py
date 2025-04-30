@@ -44,6 +44,9 @@ def train_model(
     """
     print(f"Training {model_type} model...")
     
+    import time
+    start_time = time.time()
+    
     # Set default parameters if not provided
     if model_params is None:
         model_params = {}
@@ -51,6 +54,24 @@ def train_model(
     # Create and train the model
     model = get_model(model_type, **model_params)
     model.fit(X_train, y_train)
+    
+    end_time = time.time()
+    
+    # Analyze computational complexity
+    complexity_analysis = analyze_computational_complexity(
+        model=model,
+        X_train=X_train,
+        start_time=start_time,
+        end_time=end_time,
+        model_type=model_type
+    )
+    
+    print("\nComputational Complexity Analysis:")
+    print(complexity_analysis["analysis"])
+    if "model_params" in complexity_analysis:
+        print("Model-specific parameters:")
+        for k, v in complexity_analysis["model_params"].items():
+            print(f"  {k}: {v}")
     
     # Evaluate on training data
     train_metrics = model.evaluate(X_train, y_train)
@@ -360,6 +381,65 @@ def detect_model_fitting_issues(
         result["analysis"] = "No significant overfitting or underfitting detected. Model appears to be well-balanced."
         
     return result
+
+
+def analyze_computational_complexity(
+    model: Any,
+    X_train: pd.DataFrame,
+    start_time: float,
+    end_time: float,
+    model_type: str
+) -> Dict[str, Any]:
+    """
+    Analyze computational complexity of the model.
+    
+    Args:
+        model: Trained model
+        X_train: Training features
+        start_time: Training start time
+        end_time: Training end time
+        model_type: Type of model
+        
+    Returns:
+        Dict containing complexity analysis
+    """
+    import psutil
+    import os
+    from sys import getsizeof
+    
+    complexity = {
+        "training_time": end_time - start_time,
+        "model_size_bytes": getsizeof(model),
+        "memory_usage_mb": psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024,
+        "input_shape": X_train.shape,
+        "analysis": ""
+    }
+    
+    # Model specific analysis
+    if model_type in ['rf', 'gb']:
+        n_trees = model.model.n_estimators
+        max_depth = model.model.max_depth if model.model.max_depth else "unlimited"
+        complexity["model_params"] = {
+            "n_trees": n_trees,
+            "max_depth": max_depth,
+            "theoretical_complexity": f"O(n_trees * n_samples * log(n_samples)) ≈ O({n_trees} * {X_train.shape[0]} * log({X_train.shape[0]}))"
+        }
+    elif model_type in ['linear', 'ridge', 'lasso', 'elasticnet']:
+        complexity["model_params"] = {
+            "n_features": X_train.shape[1],
+            "theoretical_complexity": f"O(n_samples * n_features) ≈ O({X_train.shape[0]} * {X_train.shape[1]})"
+        }
+    elif model_type == 'svm':
+        complexity["model_params"] = {
+            "n_support_vectors": len(model.model.support_vectors_) if hasattr(model.model, 'support_vectors_') else "N/A",
+            "theoretical_complexity": f"O(n_samples^2 * n_features) ≈ O({X_train.shape[0]}^2 * {X_train.shape[1]})"
+        }
+    
+    # Generate analysis text
+    complexity["analysis"] = f"Model trained in {complexity['training_time']:.2f} seconds using {complexity['memory_usage_mb']:.2f}MB memory. "
+    complexity["analysis"] += f"Model size: {complexity['model_size_bytes']/1024/1024:.2f}MB. "
+    
+    return complexity
 
 
 def train_evaluate_pipeline(

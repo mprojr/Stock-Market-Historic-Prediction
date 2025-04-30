@@ -14,6 +14,7 @@ import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
 from src.train import visualize_technical_indicators
+from typing import Dict, Any
 
 
 
@@ -144,6 +145,9 @@ def train_lstm_model(csv_file: str, time_steps: int = 1, epochs: int = 30, batch
     ])
     model.compile(optimizer='adam', loss='mse')
 
+    import time
+    start_time = time.time()
+    
     # Train
     history = model.fit(
         X_train, y_train,
@@ -152,7 +156,23 @@ def train_lstm_model(csv_file: str, time_steps: int = 1, epochs: int = 30, batch
         batch_size=batch_size,
         verbose=1
     )
-
+    
+    end_time = time.time()
+    
+    # Analyze computational complexity
+    complexity_analysis = analyze_lstm_complexity(
+        model=model,
+        X_train=X_train,
+        start_time=start_time,
+        end_time=end_time
+    )
+    
+    print("\nComputational Complexity Analysis:")
+    print(complexity_analysis["analysis"])
+    print("Model-specific parameters:")
+    for k, v in complexity_analysis["model_params"].items():
+        print(f"  {k}: {v}")
+    
     # Predict
     y_pred_scaled = model.predict(X_test)
     y_pred = scaler_y.inverse_transform(y_pred_scaled.reshape(-1, 1)).flatten()
@@ -293,6 +313,54 @@ def plot_actual_vs_predicted(y_true, y_pred, date_index=None, save_path="report/
     # Show the plot
     plt.show()
 
+
+def analyze_lstm_complexity(
+    model: tf.keras.Model,
+    X_train: np.ndarray,
+    start_time: float,
+    end_time: float
+) -> Dict[str, Any]:
+    """
+    Analyze computational complexity of the LSTM model.
+    
+    Args:
+        model: Trained LSTM model
+        X_train: Training features
+        start_time: Training start time
+        end_time: Training end time
+        
+    Returns:
+        Dict containing complexity analysis
+    """
+    import psutil
+    import os
+    
+    # Calculate trainable parameters
+    trainable_params = np.sum([np.prod(v.get_shape()) for v in model.trainable_variables])
+    
+    complexity = {
+        "training_time": end_time - start_time,
+        "model_size_bytes": model.count_params() * 4,  # 4 bytes per float32 parameter
+        "memory_usage_mb": psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024,
+        "input_shape": X_train.shape,
+        "trainable_parameters": trainable_params,
+        "model_params": {
+            "lstm_units": [layer.units for layer in model.layers if isinstance(layer, LSTM)],
+            "sequence_length": X_train.shape[1],
+            "n_features": X_train.shape[2],
+            "theoretical_complexity": f"O(sequence_length * n_features * lstm_units^2)"
+        },
+        "analysis": ""
+    }
+    
+    # Generate analysis text
+    complexity["analysis"] = (
+        f"LSTM model trained in {complexity['training_time']:.2f} seconds using {complexity['memory_usage_mb']:.2f}MB memory. "
+        f"Model has {trainable_params:,} trainable parameters. "
+        f"Model size: {complexity['model_size_bytes']/1024/1024:.2f}MB. "
+    )
+    
+    return complexity
 
 
 # Example usage (you can comment this out if importing)
