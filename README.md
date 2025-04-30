@@ -113,3 +113,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Commands
 1) python src/train.py --input data/raw/AAWW.csv --model-type modelName --ablation : Running ablation for traditional models
 2) python src/models/lstm_model.py --csv data/raw/AAWW.csv --ablation : Running ablation for lstm model
+3) python src/train.py --input data/raw/AAWW.csv --model-type rf --output-dir report: Fitting data / Model Fitting Analysis (Overfitting/Underfitting)

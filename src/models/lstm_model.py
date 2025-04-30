@@ -274,7 +274,7 @@ def train_lstm_model(csv_file: str, time_steps: int = 1, epochs: int = 30, batch
     # Plot
     plot_actual_vs_predicted(y_test_true, y_pred, date_index=date_index, save_path="report/actual_vs_predicted.png")
 
-    # After model.fit, add:
+     # After model.fit, add:
     print("\nModel Fitting Analysis:")
     fitting_analysis = analyze_lstm_fitting(history, y_test_true, y_pred)
     print(fitting_analysis["analysis"])
@@ -308,7 +308,9 @@ def train_lstm_model(csv_file: str, time_steps: int = 1, epochs: int = 30, batch
     plt.savefig(loss_plot_path)
     print(f"✅ Enhanced loss analysis plot saved to {loss_plot_path}")
 
-    return model, history
+    metrics = (mse, rmse, mae, r2, direction_accuracy)
+    return model, history, metrics
+
 
 
 def plot_training_history(history, save_path="report/loss_plot.png"):
@@ -480,7 +482,7 @@ def analyze_lstm_complexity(
     import os
     
     # Calculate trainable parameters
-    trainable_params = np.sum([np.prod(v.get_shape()) for v in model.trainable_variables])
+    trainable_params = np.sum([np.prod(v.shape) for v in model.trainable_variables])
     
     complexity = {
         "training_time": end_time - start_time,
