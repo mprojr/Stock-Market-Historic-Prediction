@@ -3,7 +3,8 @@
 
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+import json
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -26,6 +27,65 @@ def create_lstm_dataset(X, y, time_steps=1):
         Xs.append(X[i:(i + time_steps)])
         ys.append(y[i + time_steps])
     return np.array(Xs), np.array(ys)
+
+
+def analyze_lstm_fitting(history, y_test, y_pred, threshold_ratio=1.5):
+    """
+    Analyze LSTM model for overfitting and underfitting.
+    
+    Args:
+        history: Training history containing loss values
+        y_test: Actual test values
+        y_pred: Predicted values
+        threshold_ratio: Threshold for overfitting detection
+        
+    Returns:
+        Dict containing analysis and recommendations
+    """
+    result = {
+        "has_overfitting": False,
+        "has_underfitting": False,
+        "analysis": "",
+        "recommendations": []
+    }
+    
+    # Get final loss values
+    final_train_loss = history.history['loss'][-1]
+    final_val_loss = history.history['val_loss'][-1]
+    
+    # Calculate test R2 score
+    test_r2 = r2_score(y_test, y_pred)
+    
+    # Detect overfitting
+    loss_ratio = final_val_loss / final_train_loss
+    
+    if loss_ratio > threshold_ratio:
+        result["has_overfitting"] = True
+        result["analysis"] += "Overfitting detected: Model performs significantly better on training data than validation data. "
+        result["recommendations"].extend([
+            "Add dropout layers (e.g., try 0.2-0.5 dropout rate)",
+            "Reduce model complexity (decrease number of LSTM units)",
+            "Add L1/L2 regularization",
+            "Increase batch size",
+            "Use early stopping with patience"
+        ])
+    
+    # Detect underfitting
+    if test_r2 < 0.5 and final_train_loss > 0.1:
+        result["has_underfitting"] = True
+        result["analysis"] += "Underfitting detected: Model fails to capture the underlying patterns in the data. "
+        result["recommendations"].extend([
+            "Increase model complexity (add more LSTM layers or units)",
+            "Train for more epochs",
+            "Decrease batch size",
+            "Add more features or engineer new features",
+            "Consider increasing the time steps"
+        ])
+    
+    if not result["has_overfitting"] and not result["has_underfitting"]:
+        result["analysis"] = "No significant overfitting or underfitting detected. Model appears to be well-balanced."
+    
+    return result
 
 
 def train_lstm_model(csv_file: str, time_steps: int = 1, epochs: int = 30, batch_size: int = 32):
@@ -135,6 +195,39 @@ def train_lstm_model(csv_file: str, time_steps: int = 1, epochs: int = 30, batch
     # Plot
     plot_actual_vs_predicted(y_test_true, y_pred, date_index=date_index, save_path="report/actual_vs_predicted.png")
 
+    # After model.fit, add:
+    print("\nModel Fitting Analysis:")
+    fitting_analysis = analyze_lstm_fitting(history, y_test_true, y_pred)
+    print(fitting_analysis["analysis"])
+    if fitting_analysis["recommendations"]:
+        print("\nRecommendations:")
+        for rec in fitting_analysis["recommendations"]:
+            print(f"- {rec}")
+    
+    # Save the analysis to a JSON file
+    analysis_path = "report/lstm_fitting_analysis.json"
+    os.makedirs(os.path.dirname(analysis_path), exist_ok=True)
+    with open(analysis_path, 'w') as f:
+        json.dump(fitting_analysis, f, indent=2)
+    print(f"\n✅ Fitting analysis saved to {analysis_path}")
+    
+    # Plot training history with clear overfitting/underfitting visualization
+    plt.figure(figsize=(12, 6))
+    plt.plot(history.history['loss'], label='Training Loss', color='blue')
+    plt.plot(history.history['val_loss'], label='Validation Loss', color='red')
+    plt.axhline(y=history.history['loss'][-1], color='blue', linestyle='--', alpha=0.3)
+    plt.axhline(y=history.history['val_loss'][-1], color='red', linestyle='--', alpha=0.3)
+    plt.title('Training and Validation Loss Over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss (MSE)')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    
+    # Save the enhanced loss plot
+    loss_plot_path = "report/lstm_loss_analysis.png"
+    plt.savefig(loss_plot_path)
+    print(f"✅ Enhanced loss analysis plot saved to {loss_plot_path}")
 
     return model, history
 

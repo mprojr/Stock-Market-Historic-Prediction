@@ -1,0 +1,19 @@
+{
+  "metrics": {
+    "mse": 16.656332350058822,
+    "rmse": 4.081217018250662,
+    "mae": 2.5392855954282063,
+    "r2": 0.9298594936058729,
+    "direction_accuracy": 0.5252100840336135
+  },
+  "feature_importances": null,
+  "fitting_analysis": {
+    "has_overfitting": true,
+    "has_underfitting": false,
+    "analysis": "Overfitting detected: Model performs significantly better on training data than test data. ",
+    "recommendations": [
+      "Increase regularization (decrease C parameter)",
+      "Try a different kernel"
+    ]
+  }
+}

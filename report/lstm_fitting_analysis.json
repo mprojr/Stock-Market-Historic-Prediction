@@ -1,0 +1,6 @@
+{
+  "has_overfitting": false,
+  "has_underfitting": false,
+  "analysis": "No significant overfitting or underfitting detected. Model appears to be well-balanced.",
+  "recommendations": []
+}

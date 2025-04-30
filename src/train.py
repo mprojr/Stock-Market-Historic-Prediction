@@ -163,7 +163,10 @@ def evaluate_model(
     visualize: bool = False,
     fig_path: Optional[str] = None,
     tech_indicators_fig_path: Optional[str] = None,
-    forecast_horizon: int = 1
+    forecast_horizon: int = 1,
+    X_train: Optional[pd.DataFrame] = None,
+    y_train: Optional[pd.Series] = None,
+    model_type: str = 'rf'
 ) -> Dict[str, float]:
     """
     Evaluate a trained model on test data.
@@ -179,16 +182,19 @@ def evaluate_model(
         fig_path (Optional[str]): Path to save visualization figures
         tech_indicators_fig_path (Optional[str]): Path to save technical indicator figures
         forecast_horizon (int): Number of periods ahead forecasted
+        X_train (Optional[pd.DataFrame]): Training features for overfitting detection
+        y_train (Optional[pd.Series]): Training target for overfitting detection
+        model_type (str): Type of model being evaluated
         
     Returns:
         Dict[str, float]: Evaluation metrics
     """
     print("Evaluating model on test data...")
     
-    # Evaluate the model
-    metrics = model.evaluate(X_test, y_test)
+    # Evaluate the model on test data
+    test_metrics = model.evaluate(X_test, y_test)
     print("Test metrics:")
-    for metric, value in metrics.items():
+    for metric, value in test_metrics.items():
         print(f"  {metric}: {value:.4f}")
     
     # Get predictions
@@ -201,57 +207,159 @@ def evaluate_model(
         for feature, importance in sorted(importances.items(), key=lambda x: x[1], reverse=True)[:10]:
             print(f"  {feature}: {importance:.4f}")
     
+    # Detect overfitting/underfitting if training data is provided
+    fitting_analysis = None
+    if X_train is not None and y_train is not None:
+        # Calculate training metrics
+        train_metrics = model.evaluate(X_train, y_train)
+        
+        # Analyze for overfitting/underfitting
+        fitting_analysis = detect_model_fitting_issues(train_metrics, test_metrics, model_type)
+        
+        # Print analysis
+        print("\nModel Fitting Analysis:")
+        print(fitting_analysis["analysis"])
+        if fitting_analysis["recommendations"]:
+            print("Recommendations:")
+            for rec in fitting_analysis["recommendations"]:
+                print(f"  - {rec}")
+    
     # Save results if requested
     if save_results and results_path:
         os.makedirs(os.path.dirname(results_path), exist_ok=True)
         results = {
-            'metrics': metrics,
+            'metrics': test_metrics,
             'feature_importances': importances
         }
+        
+        # Add fitting analysis if available
+        if fitting_analysis:
+            results['fitting_analysis'] = fitting_analysis
+            
         with open(results_path, 'w') as f:
             json.dump(results, f, indent=2)
         print(f"Results saved to {results_path}")
     
     # Visualize predictions if requested
     if visualize:
-        # Ensure datetime index from raw_data
-        date_index = None
-        if raw_data is not None and 'Date' in raw_data.columns:
-            raw_data['Date'] = pd.to_datetime(raw_data['Date'])
-            raw_data = raw_data.set_index('Date')
-            date_index = raw_data.index[-len(y_pred):]  # match prediction length
-
-        # Plot Actual vs Predicted with datetime X-axis
+        # Basic visualization of predictions vs actual
         plt.figure(figsize=(12, 6))
-        x_axis = date_index if date_index is not None else range(len(y_pred))
-        plt.plot(x_axis, y_test.values, label='Actual')
-        plt.plot(x_axis, y_pred, label='Predicted')
+        plt.plot(y_test.values, label='Actual')
+        plt.plot(y_pred, label='Predicted')
         plt.title('Actual vs Predicted Stock Prices')
-        plt.xlabel('Date' if date_index is not None else 'Time')
+        plt.xlabel('Time')
         plt.ylabel('Price')
         plt.legend()
         plt.grid(True)
-        plt.tight_layout()
-
+        
         if fig_path:
             os.makedirs(os.path.dirname(fig_path), exist_ok=True)
             plt.savefig(fig_path)
             print(f"Figure saved to {fig_path}")
         else:
             plt.show()
-
-        # Technical indicators visualization
+        
+        # Technical indicators visualization if raw data is provided
         if raw_data is not None and tech_indicators_fig_path:
-            test_data = raw_data.iloc[-len(y_pred):]
-            visualize_technical_indicators(
-                df=test_data,
-                predictions=y_pred,
-                forecast_horizon=forecast_horizon,
-                fig_path=tech_indicators_fig_path
-            )
-
+            # Get the portion of raw_data that corresponds to X_test
+            if len(raw_data) > len(X_test):
+                # Align the raw data with test data
+                test_data = raw_data.iloc[-len(X_test):]
+                visualize_technical_indicators(
+                    test_data, 
+                    predictions=y_pred,
+                    forecast_horizon=forecast_horizon,
+                    fig_path=tech_indicators_fig_path
+                )
     
-    return metrics
+    return test_metrics
+
+
+def detect_model_fitting_issues(
+    train_metrics: Dict[str, float],
+    test_metrics: Dict[str, float],
+    model_type: str
+) -> Dict[str, Any]:
+    """
+    Detect overfitting or underfitting issues in the model.
+    
+    Args:
+        train_metrics (Dict[str, float]): Metrics from training data
+        test_metrics (Dict[str, float]): Metrics from test data
+        model_type (str): Type of model being evaluated
+        
+    Returns:
+        Dict[str, Any]: Dictionary with analysis and recommendations
+    """
+    result = {
+        "has_overfitting": False,
+        "has_underfitting": False,
+        "analysis": "",
+        "recommendations": []
+    }
+    
+    # Get key metrics
+    train_rmse = train_metrics.get('rmse', float('inf'))
+    test_rmse = test_metrics.get('rmse', float('inf'))
+    train_r2 = train_metrics.get('r2', 0)
+    test_r2 = test_metrics.get('r2', 0)
+    
+    # Detect overfitting
+    rmse_ratio = test_rmse / train_rmse if train_rmse > 0 else float('inf')
+    r2_diff = train_r2 - test_r2
+    
+    if rmse_ratio > 1.5 or r2_diff > 0.3:
+        result["has_overfitting"] = True
+        result["analysis"] += "Overfitting detected: Model performs significantly better on training data than test data. "
+        
+        # Model-specific recommendations for overfitting
+        if model_type in ['rf', 'gb']:
+            result["recommendations"].extend([
+                "Reduce model complexity (decrease max_depth, increase min_samples_split)",
+                "Add regularization (decrease n_estimators)",
+                "Consider feature selection to reduce dimensionality"
+            ])
+        elif model_type in ['linear', 'ridge', 'lasso', 'elasticnet']:
+            result["recommendations"].extend([
+                "Increase regularization strength (alpha parameter)",
+                "Reduce feature count through feature selection"
+            ])
+        elif model_type == 'svm':
+            result["recommendations"].extend([
+                "Increase regularization (decrease C parameter)",
+                "Try a different kernel"
+            ])
+        
+    # Detect underfitting
+    if test_r2 < 0.5 and train_r2 < 0.6:
+        result["has_underfitting"] = True
+        result["analysis"] += "Underfitting detected: Model fails to capture the underlying patterns in the data. "
+        
+        # Model-specific recommendations for underfitting
+        if model_type in ['rf', 'gb']:
+            result["recommendations"].extend([
+                "Increase model complexity (increase max_depth, n_estimators)",
+                "Add more features or engineer new features",
+                "If using GB, decrease learning rate and increase n_estimators"
+            ])
+        elif model_type in ['linear', 'ridge', 'lasso', 'elasticnet']:
+            result["recommendations"].extend([
+                "Try non-linear models as the relationship may be non-linear",
+                "Engineer additional features that might capture non-linear relationships",
+                "Decrease regularization strength"
+            ])
+        elif model_type == 'svm':
+            result["recommendations"].extend([
+                "Try a different kernel (e.g., 'rbf' instead of 'linear')",
+                "Decrease regularization (increase C parameter)",
+                "Adjust gamma parameter if using rbf kernel"
+            ])
+    
+    # If no issues detected
+    if not result["has_overfitting"] and not result["has_underfitting"]:
+        result["analysis"] = "No significant overfitting or underfitting detected. Model appears to be well-balanced."
+        
+    return result
 
 
 def train_evaluate_pipeline(
@@ -303,7 +411,7 @@ def train_evaluate_pipeline(
     raw_data = pd.read_csv(raw_data_path) if os.path.exists(raw_data_path) else None
     
     # Train model
-    model, _ = train_model(
+    model, train_metrics = train_model(
         X_train=X_train,
         y_train=y_train,
         model_type=model_type,
@@ -322,7 +430,10 @@ def train_evaluate_pipeline(
         visualize=visualize,
         fig_path=fig_path,
         tech_indicators_fig_path=tech_indicators_fig_path,
-        forecast_horizon=forecast_horizon
+        forecast_horizon=forecast_horizon,
+        X_train=X_train,
+        y_train=y_train,
+        model_type=model_type
     )
     
     print("Training and evaluation complete!")
@@ -340,11 +451,28 @@ if __name__ == "__main__":
     parser.add_argument("--no-save-results", action="store_true", help="Disable results saving")
     parser.add_argument("--no-volume-profile", action="store_true", help="Disable volume profile analysis")
     
+    # Tree-based model parameters
+    parser.add_argument("--max-depth", type=int, default=None, help="Maximum depth for tree-based models")
+    parser.add_argument("--min-samples-split", type=int, default=2, help="Minimum samples required to split a node")
+    parser.add_argument("--n-estimators", type=int, default=100, help="Number of trees in the forest")
+    
     args = parser.parse_args()
+    
+    # Create model_params dictionary based on model type
+    model_params = {}
+    if args.model_type in ['rf', 'gb']:
+        model_params = {
+            "max_depth": args.max_depth,
+            "min_samples_split": args.min_samples_split,
+            "n_estimators": args.n_estimators
+        }
+        # Remove None values
+        model_params = {k: v for k, v in model_params.items() if v is not None}
     
     train_evaluate_pipeline(
         input_file=args.input,
         model_type=args.model_type,
+        model_params=model_params,  # Now only passes relevant parameters
         output_dir=args.output_dir,
         forecast_horizon=args.horizon,
         visualize=not args.no_visualize,
