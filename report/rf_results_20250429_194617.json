@@ -1,0 +1,51 @@
+{
+  "metrics": {
+    "mse": 2.6400429259994205,
+    "rmse": 1.6248208904366723,
+    "mae": 1.1169950214247575,
+    "r2": 0.9888826697354428,
+    "direction_accuracy": 0.4803921568627451
+  },
+  "feature_importances": {
+    "Open": 0.006148463682774254,
+    "High": 0.01699405964595164,
+    "Low": 0.12876424226782926,
+    "Close": 0.27186170766142354,
+    "Adj Close": 0.4324776261968672,
+    "Volume": 3.936743033897588e-06,
+    "Return": 5.325280941486981e-05,
+    "Volatility_5d": 2.5954235912255135e-06,
+    "Volatility_20d": 7.600593997984809e-06,
+    "MA_5d": 7.890898857623159e-05,
+    "MA_20d": 1.5331749695933354e-05,
+    "MA_50d": 1.851505342960095e-06,
+    "EMA_12d": 1.6215290150246182e-05,
+    "EMA_20d": 5.304255649155373e-06,
+    "EMA_26d": 0.0,
+    "EMA_50d": 0.0,
+    "Dist_EMA20": 4.214999579607683e-05,
+    "Dist_EMA50": 3.3420130663360965e-05,
+    "EMA20_cross_EMA50": 7.734514875117766e-06,
+    "MACD": 1.3996260065434063e-05,
+    "MACD_Signal": 3.791253290780031e-05,
+    "MACD_Histogram": 4.187300537299222e-06,
+    "RSI_14d": 1.634845745400356e-05,
+    "StochRSI_K": 9.208588494950132e-06,
+    "StochRSI_D": 3.008082042244239e-06,
+    "StochRSI_Raw": 3.017302333385532e-05,
+    "Volume_Change": 0.0,
+    "Vol_MA_5d": 1.2503537906409136e-05,
+    "Vol_MA_20d": 1.0618930784204173e-05,
+    "Vol_Ratio": 7.002732383105899e-06,
+    "price_bin": 0.011915233636029756,
+    "Dist_HighVol_Zone_1": 0.03747656936876632,
+    "Dist_HighVol_Zone_2": 0.03349961136305951,
+    "Dist_HighVol_Zone_3": 0.06044922473060217
+  },
+  "fitting_analysis": {
+    "has_overfitting": false,
+    "has_underfitting": false,
+    "analysis": "No significant overfitting or underfitting detected. Model appears to be well-balanced.",
+    "recommendations": []
+  }
+}

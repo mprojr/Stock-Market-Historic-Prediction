@@ -3,7 +3,8 @@
 
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+import json
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -13,6 +14,7 @@ import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
 from src.train import visualize_technical_indicators
+from typing import Dict, Any
 
 
 
@@ -26,6 +28,124 @@ def create_lstm_dataset(X, y, time_steps=1):
         Xs.append(X[i:(i + time_steps)])
         ys.append(y[i + time_steps])
     return np.array(Xs), np.array(ys)
+
+
+def analyze_lstm_fitting(history, y_test, y_pred, threshold_ratio=1.5):
+    """
+    Analyze LSTM model for overfitting and underfitting.
+    
+    Args:
+        history: Training history containing loss values
+        y_test: Actual test values
+        y_pred: Predicted values
+        threshold_ratio: Threshold for overfitting detection
+        
+    Returns:
+        Dict containing analysis and recommendations
+    """
+    result = {
+        "has_overfitting": False,
+        "has_underfitting": False,
+        "analysis": "",
+        "recommendations": []
+    }
+    
+    # Get final loss values
+    final_train_loss = history.history['loss'][-1]
+    final_val_loss = history.history['val_loss'][-1]
+    
+    # Calculate test R2 score
+    test_r2 = r2_score(y_test, y_pred)
+    
+    # Detect overfitting
+    loss_ratio = final_val_loss / final_train_loss
+    
+    if loss_ratio > threshold_ratio:
+        result["has_overfitting"] = True
+        result["analysis"] += "Overfitting detected: Model performs significantly better on training data than validation data. "
+        result["recommendations"].extend([
+            "Add dropout layers (e.g., try 0.2-0.5 dropout rate)",
+            "Reduce model complexity (decrease number of LSTM units)",
+            "Add L1/L2 regularization",
+            "Increase batch size",
+            "Use early stopping with patience"
+        ])
+    
+    # Detect underfitting
+    if test_r2 < 0.5 and final_train_loss > 0.1:
+        result["has_underfitting"] = True
+        result["analysis"] += "Underfitting detected: Model fails to capture the underlying patterns in the data. "
+        result["recommendations"].extend([
+            "Increase model complexity (add more LSTM layers or units)",
+            "Train for more epochs",
+            "Decrease batch size",
+            "Add more features or engineer new features",
+            "Consider increasing the time steps"
+        ])
+    
+    if not result["has_overfitting"] and not result["has_underfitting"]:
+        result["analysis"] = "No significant overfitting or underfitting detected. Model appears to be well-balanced."
+    
+    return result
+
+
+def analyze_lstm_fitting(history, y_test, y_pred, threshold_ratio=1.5):
+    """
+    Analyze LSTM model for overfitting and underfitting.
+    
+    Args:
+        history: Training history containing loss values
+        y_test: Actual test values
+        y_pred: Predicted values
+        threshold_ratio: Threshold for overfitting detection
+        
+    Returns:
+        Dict containing analysis and recommendations
+    """
+    result = {
+        "has_overfitting": False,
+        "has_underfitting": False,
+        "analysis": "",
+        "recommendations": []
+    }
+    
+    # Get final loss values
+    final_train_loss = history.history['loss'][-1]
+    final_val_loss = history.history['val_loss'][-1]
+    
+    # Calculate test R2 score
+    test_r2 = r2_score(y_test, y_pred)
+    
+    # Detect overfitting
+    loss_ratio = final_val_loss / final_train_loss
+    
+    if loss_ratio > threshold_ratio:
+        result["has_overfitting"] = True
+        result["analysis"] += "Overfitting detected: Model performs significantly better on training data than validation data. "
+        result["recommendations"].extend([
+            "Add dropout layers (e.g., try 0.2-0.5 dropout rate)",
+            "Reduce model complexity (decrease number of LSTM units)",
+            "Add L1/L2 regularization",
+            "Increase batch size",
+            "Use early stopping with patience"
+        ])
+    
+    # Detect underfitting
+    if test_r2 < 0.5 and final_train_loss > 0.1:
+        result["has_underfitting"] = True
+        result["analysis"] += "Underfitting detected: Model fails to capture the underlying patterns in the data. "
+        result["recommendations"].extend([
+            "Increase model complexity (add more LSTM layers or units)",
+            "Train for more epochs",
+            "Decrease batch size",
+            "Add more features or engineer new features",
+            "Consider increasing the time steps"
+        ])
+    
+    if not result["has_overfitting"] and not result["has_underfitting"]:
+        result["analysis"] = "No significant overfitting or underfitting detected. Model appears to be well-balanced."
+    
+    return result
 
 
 def train_lstm_model(csv_file: str, time_steps: int = 1, epochs: int = 30, batch_size: int = 32, lstm_units: int = 64):
@@ -84,6 +204,9 @@ def train_lstm_model(csv_file: str, time_steps: int = 1, epochs: int = 30, batch
     ])
     model.compile(optimizer='adam', loss='mse')
 
+    import time
+    start_time = time.time()
+    
     # Train
     history = model.fit(
         X_train, y_train,
@@ -92,7 +215,23 @@ def train_lstm_model(csv_file: str, time_steps: int = 1, epochs: int = 30, batch
         batch_size=batch_size,
         verbose=1
     )
-
+    
+    end_time = time.time()
+    
+    # Analyze computational complexity
+    complexity_analysis = analyze_lstm_complexity(
+        model=model,
+        X_train=X_train,
+        start_time=start_time,
+        end_time=end_time
+    )
+    
+    print("\nComputational Complexity Analysis:")
+    print(complexity_analysis["analysis"])
+    print("Model-specific parameters:")
+    for k, v in complexity_analysis["model_params"].items():
+        print(f"  {k}: {v}")
+    
     # Predict
     y_pred_scaled = model.predict(X_test)
     y_pred = scaler_y.inverse_transform(y_pred_scaled.reshape(-1, 1)).flatten()
@@ -135,8 +274,41 @@ def train_lstm_model(csv_file: str, time_steps: int = 1, epochs: int = 30, batch
     # Plot
     plot_actual_vs_predicted(y_test_true, y_pred, date_index=date_index, save_path="report/actual_vs_predicted.png")
 
+    # After model.fit, add:
+    print("\nModel Fitting Analysis:")
+    fitting_analysis = analyze_lstm_fitting(history, y_test_true, y_pred)
+    print(fitting_analysis["analysis"])
+    if fitting_analysis["recommendations"]:
+        print("\nRecommendations:")
+        for rec in fitting_analysis["recommendations"]:
+            print(f"- {rec}")
+    
+    # Save the analysis to a JSON file
+    analysis_path = "report/lstm_fitting_analysis.json"
+    os.makedirs(os.path.dirname(analysis_path), exist_ok=True)
+    with open(analysis_path, 'w') as f:
+        json.dump(fitting_analysis, f, indent=2)
+    print(f"\n✅ Fitting analysis saved to {analysis_path}")
+    
+    # Plot training history with clear overfitting/underfitting visualization
+    plt.figure(figsize=(12, 6))
+    plt.plot(history.history['loss'], label='Training Loss', color='blue')
+    plt.plot(history.history['val_loss'], label='Validation Loss', color='red')
+    plt.axhline(y=history.history['loss'][-1], color='blue', linestyle='--', alpha=0.3)
+    plt.axhline(y=history.history['val_loss'][-1], color='red', linestyle='--', alpha=0.3)
+    plt.title('Training and Validation Loss Over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss (MSE)')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    
+    # Save the enhanced loss plot
+    loss_plot_path = "report/lstm_loss_analysis.png"
+    plt.savefig(loss_plot_path)
+    print(f"✅ Enhanced loss analysis plot saved to {loss_plot_path}")
 
-    return model, history, (mse, rmse, mae, r2, direction_accuracy)
+    return model, history
 
 
 def plot_training_history(history, save_path="report/loss_plot.png"):
@@ -206,13 +378,7 @@ def run_lstm_ablation_study(csv_file: str, time_steps=10, epochs=50, batch_size=
 
     for units in unit_list:
         print(f"\n🔧 Training with LSTM Units = {units}...")
-        #_, _, metrics = train_lstm_model(
-        #    csv_file=csv_file,
-        #    time_steps=time_steps,
-        #    epochs=epochs,
-        #    batch_size=batch_size,
-        #    lstm_units=units
-        #)
+        
 
 
         # You must capture metrics from train_lstm_model, so let's assume you return them
@@ -243,6 +409,102 @@ def run_lstm_ablation_study(csv_file: str, time_steps=10, epochs=50, batch_size=
     print(f"{'Units':<10}{'MSE':<10}{'RMSE':<10}{'MAE':<10}{'R2':<10}{'DirAcc':<10}")
     for r in results:
         print(f"{r['LSTM Units']:<10}{r['MSE']:<10.4f}{r['RMSE']:<10.4f}{r['MAE']:<10.4f}{r['R2']:<10.4f}{r['Direction Accuracy']:<10.4f}")
+
+def analyze_lstm_complexity(
+    model: tf.keras.Model,
+    X_train: np.ndarray,
+    start_time: float,
+    end_time: float
+) -> Dict[str, Any]:
+    """
+    Analyze computational complexity of the LSTM model.
+    
+    Args:
+        model: Trained LSTM model
+        X_train: Training features
+        start_time: Training start time
+        end_time: Training end time
+        
+    Returns:
+        Dict containing complexity analysis
+    """
+    import psutil
+    import os
+    
+    # Calculate trainable parameters
+    trainable_params = np.sum([np.prod(v.get_shape()) for v in model.trainable_variables])
+    
+    complexity = {
+        "training_time": end_time - start_time,
+        "model_size_bytes": model.count_params() * 4,  # 4 bytes per float32 parameter
+        "memory_usage_mb": psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024,
+        "input_shape": X_train.shape,
+        "trainable_parameters": trainable_params,
+        "model_params": {
+            "lstm_units": [layer.units for layer in model.layers if isinstance(layer, LSTM)],
+            "sequence_length": X_train.shape[1],
+            "n_features": X_train.shape[2],
+            "theoretical_complexity": f"O(sequence_length * n_features * lstm_units^2)"
+        },
+        "analysis": ""
+    }
+    
+    # Generate analysis text
+    complexity["analysis"] = (
+        f"LSTM model trained in {complexity['training_time']:.2f} seconds using {complexity['memory_usage_mb']:.2f}MB memory. "
+        f"Model has {trainable_params:,} trainable parameters. "
+        f"Model size: {complexity['model_size_bytes']/1024/1024:.2f}MB. "
+    )
+    
+    return complexity
+
+def analyze_lstm_complexity(
+    model: tf.keras.Model,
+    X_train: np.ndarray,
+    start_time: float,
+    end_time: float
+) -> Dict[str, Any]:
+    """
+    Analyze computational complexity of the LSTM model.
+    
+    Args:
+        model: Trained LSTM model
+        X_train: Training features
+        start_time: Training start time
+        end_time: Training end time
+        
+    Returns:
+        Dict containing complexity analysis
+    """
+    import psutil
+    import os
+    
+    # Calculate trainable parameters
+    trainable_params = np.sum([np.prod(v.get_shape()) for v in model.trainable_variables])
+    
+    complexity = {
+        "training_time": end_time - start_time,
+        "model_size_bytes": model.count_params() * 4,  # 4 bytes per float32 parameter
+        "memory_usage_mb": psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024,
+        "input_shape": X_train.shape,
+        "trainable_parameters": trainable_params,
+        "model_params": {
+            "lstm_units": [layer.units for layer in model.layers if isinstance(layer, LSTM)],
+            "sequence_length": X_train.shape[1],
+            "n_features": X_train.shape[2],
+            "theoretical_complexity": f"O(sequence_length * n_features * lstm_units^2)"
+        },
+        "analysis": ""
+    }
+    
+    # Generate analysis text
+    complexity["analysis"] = (
+        f"LSTM model trained in {complexity['training_time']:.2f} seconds using {complexity['memory_usage_mb']:.2f}MB memory. "
+        f"Model has {trainable_params:,} trainable parameters. "
+        f"Model size: {complexity['model_size_bytes']/1024/1024:.2f}MB. "
+    )
+    
+    return complexity
 
 
 # Example usage (you can comment this out if importing)
