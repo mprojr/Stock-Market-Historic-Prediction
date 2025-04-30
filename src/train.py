@@ -19,7 +19,7 @@ from typing import Dict, Any, Optional, Tuple, List
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.preprocess import process_data
-from models.models import get_model
+from src.models.models import get_model
 
 
 def train_model(
@@ -214,35 +214,42 @@ def evaluate_model(
     
     # Visualize predictions if requested
     if visualize:
-        # Basic visualization of predictions vs actual
+        # Ensure datetime index from raw_data
+        date_index = None
+        if raw_data is not None and 'Date' in raw_data.columns:
+            raw_data['Date'] = pd.to_datetime(raw_data['Date'])
+            raw_data = raw_data.set_index('Date')
+            date_index = raw_data.index[-len(y_pred):]  # match prediction length
+
+        # Plot Actual vs Predicted with datetime X-axis
         plt.figure(figsize=(12, 6))
-        plt.plot(y_test.values, label='Actual')
-        plt.plot(y_pred, label='Predicted')
+        x_axis = date_index if date_index is not None else range(len(y_pred))
+        plt.plot(x_axis, y_test.values, label='Actual')
+        plt.plot(x_axis, y_pred, label='Predicted')
         plt.title('Actual vs Predicted Stock Prices')
-        plt.xlabel('Time')
+        plt.xlabel('Date' if date_index is not None else 'Time')
         plt.ylabel('Price')
         plt.legend()
         plt.grid(True)
-        
+        plt.tight_layout()
+
         if fig_path:
             os.makedirs(os.path.dirname(fig_path), exist_ok=True)
             plt.savefig(fig_path)
             print(f"Figure saved to {fig_path}")
         else:
             plt.show()
-        
-        # Technical indicators visualization if raw data is provided
+
+        # Technical indicators visualization
         if raw_data is not None and tech_indicators_fig_path:
-            # Get the portion of raw_data that corresponds to X_test
-            if len(raw_data) > len(X_test):
-                # Align the raw data with test data
-                test_data = raw_data.iloc[-len(X_test):]
-                visualize_technical_indicators(
-                    test_data, 
-                    predictions=y_pred,
-                    forecast_horizon=forecast_horizon,
-                    fig_path=tech_indicators_fig_path
-                )
+            test_data = raw_data.iloc[-len(y_pred):]
+            visualize_technical_indicators(
+                df=test_data,
+                predictions=y_pred,
+                forecast_horizon=forecast_horizon,
+                fig_path=tech_indicators_fig_path
+            )
+
     
     return metrics
 
