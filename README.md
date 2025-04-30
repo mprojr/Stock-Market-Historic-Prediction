@@ -93,12 +93,118 @@ Explore the data and model performance using the Jupyter notebooks:
 jupyter notebook notebooks/eda.ipynb
 ```
 
-## Project Status
+## Model Commands
 
-This project is currently in development. Future improvements include:
-- Adding more advanced deep learning models (LSTM, Transformer)
-- Incorporating sentiment analysis from news and social media
-- Developing a backtesting framework for trading strategies
+> **Note**: In all commands below, `AAWW.csv` can be replaced with any stock data CSV file you've placed in the `data/raw/` directory. The CSV file should contain at least: Date, Open, High, Low, Close, and Volume columns.
+> 
+> Example stock files:
+> - AAWW.csv (Atlas Air Worldwide Holdings)
+> - AAPL.csv (Apple Inc.)
+> - GOOGL.csv (Alphabet Inc.)
+> - Any other stock data in proper CSV format
+
+### Traditional Models
+1. Random Forest:
+```bash
+# Basic usage
+python src/train.py --input data/raw/AAWW.csv --model-type rf --output-dir report
+
+# With parameters
+python src/train.py --input data/raw/AAWW.csv --model-type rf --max-depth 5 --min-samples-split 5 --n-estimators 50
+```
+
+2. Gradient Boosting:
+```bash
+# Basic usage
+python src/train.py --input data/raw/AAWW.csv --model-type gb --output-dir report
+
+# With parameters
+python src/train.py --input data/raw/AAWW.csv --model-type gb --max-depth 3 --n-estimators 100
+```
+
+3. Linear Models:
+```bash
+# Linear Regression
+python src/train.py --input data/raw/AAWW.csv --model-type linear --output-dir report
+
+# Ridge Regression
+python src/train.py --input data/raw/AAWW.csv --model-type ridge --output-dir report
+
+# Lasso Regression
+python src/train.py --input data/raw/AAWW.csv --model-type lasso --output-dir report
+
+# ElasticNet Regression
+python src/train.py --input data/raw/AAWW.csv --model-type elasticnet --output-dir report
+```
+
+4. Support Vector Machine:
+```bash
+python src/train.py --input data/raw/AAWW.csv --model-type svm --output-dir report
+```
+
+### LSTM Model
+```bash
+# Basic usage
+python src/models/lstm_model.py --csv data/raw/AAWW.csv
+
+# With custom parameters
+python src/models/lstm_model.py --csv data/raw/AAWW.csv --time_steps 10 --epochs 50 --batch_size 32
+
+# For longer training
+python src/models/lstm_model.py --csv data/raw/AAWW.csv --time_steps 20 --epochs 100 --batch_size 64
+```
+
+### Additional Options for All Models
+```bash
+# Disable visualizations
+python src/train.py --input data/raw/AAWW.csv --model-type rf --no-visualize
+
+# Disable model saving
+python src/train.py --input data/raw/AAWW.csv --model-type rf --no-save-model
+
+# Disable results saving
+python src/train.py --input data/raw/AAWW.csv --model-type rf --no-save-results
+
+# Disable volume profile analysis
+python src/train.py --input data/raw/AAWW.csv --model-type rf --no-volume-profile
+
+# Change forecast horizon
+python src/train.py --input data/raw/AAWW.csv --model-type rf --horizon 5
+```
+
+### Output Analysis
+All models will generate:
+- Model performance metrics
+- Overfitting/underfitting analysis
+- Computational complexity analysis (training time, memory usage, etc.)
+- Visualizations in the `report` directory:
+  - Actual vs Predicted plots
+  - Technical indicators
+  - Training history (for LSTM)
+  - Model-specific analysis
+
+### Analysis Commands
+1. Model Fitting Analysis (Overfitting/Underfitting):
+```bash
+# For traditional models
+python src/train.py --input data/raw/AAWW.csv --model-type rf --output-dir report
+
+# For LSTM
+python src/models/lstm_model.py --csv data/raw/AAWW.csv
+```
+
+2. Ablation Studies:
+```bash
+# For traditional models
+python src/train.py --input data/raw/AAWW.csv --model-type modelName --ablation
+
+# For LSTM
+python src/models/lstm_model.py --csv data/raw/AAWW.csv --ablation
+```
+
+Note: Replace `modelName` with any of: `rf`, `gb`, `linear`, `ridge`, `lasso`, `elasticnet`, or `svm`
+
+## Project Status
 
 ## License
 
